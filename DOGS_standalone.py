@@ -39,10 +39,9 @@ def Initialize_IC():
         y0 = np.array([23.5712, 23.5712])
     elif n == 3:
         xE = np.array([[0.5, 0.5, 0.5, 0.75], [0.5, 0.5, 0.75, 0.5], [0.5, 0.75, 0.5, 0.5]])
-        y0 = np.array([0, 0, 0])
-#         SAcha SEE HERE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        bnd2 = np.array([0.15, 0.2, 0.13])
-        bnd1 = np.array([0.05, 0, 0])
+        y0 = np.array([23.5712, 23.5712, 23.5712])
+        bnd2 = np.array([30, 30, 30])
+        bnd1 = np.array([24, 24, 24])
     
     xU = bounds(np.zeros([n, 1]), np.ones([n, 1]), n)
 
@@ -203,13 +202,13 @@ def DOGS_standlone():
             r = input('Initializtion complete, type anything to continue: ')
 
             # Run one iteration after initialization.
-            dogs.DOGS_standalone_IC()
+            dogs.DOGS_standalone_lorenz_IC()
 
             return
 
     else:
 
-        dogs.DOGS_standalone_IC()
+        dogs.DOGS_standalone_lorenz_IC()
         return
 
 
