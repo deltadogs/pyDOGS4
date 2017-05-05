@@ -203,13 +203,13 @@ def DOGS_standlone():
             r = input('Initializtion complete, type anything to continue: ')
 
             # Run one iteration after initialization.
-            dogs.DOGS_standalone_lorenz_IC()
+            dogs.DOGS_standalone_IC()
 
             return
 
     else:
 
-        dogs.DOGS_standalone_lorenz_IC()
+        dogs.DOGS_standalone_IC()
         return
 
 
