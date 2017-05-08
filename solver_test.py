@@ -287,10 +287,11 @@ def run_opti():
         print('stop = ', stop)
     return
 ################################################################################################################
-run_opti()
-DOGS_standlone()
+#run_opti()
+#DOGS_standlone()
 
+dogs.solver_lorenz()
 # Delete the directory of allpoints
-current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-shutil.rmtree(current_path + "/allpoints")
+#current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+#shutil.rmtree(current_path + "/allpoints")
 
