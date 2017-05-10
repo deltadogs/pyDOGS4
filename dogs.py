@@ -954,7 +954,7 @@ def Delta_DOGS_standalone():
 
     inter_par = Inter_par(method=method)
     [inter_par, yp] = regressionparametarization(xE, yE, SigmaT, inter_par)
-    K0 = 20# K0 = np.ptp(yE, axis=0)
+    K0 = 0.002 # K0 = np.ptp(yE, axis=0)# range of the objective function
     # Calculate the discrete function.
     ind_out = np.argmin(yp + SigmaT)
     sd = np.amin((yp, 2 * yE - yp), 0) - L * SigmaT
