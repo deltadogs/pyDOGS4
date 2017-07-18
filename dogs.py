@@ -14,10 +14,9 @@ from tr import transient_removal
 import lorenz
 import tr
 import platform
-
-np.set_printoptions(linewidth=200, precision=5, suppress=True)
-pd.options.display.max_rows = 20
-pd.options.display.expand_frame_repr = False
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.linalg import norm
 
 '''MIT License
 Copyright (c) 2017
@@ -84,7 +83,7 @@ def mindis(x, xi):
     x = x.reshape(-1, 1)
     y = float('inf')
     index = float('inf')
-    x1 = np.copy(x) * 10e10
+    x1 = np.copy(x) * 1e+20
     N = xi.shape[1]
     for i in range(N):
         y1 = np.linalg.norm(x[:, 0] - xi[:, i])
@@ -175,9 +174,7 @@ def interpolateparameterization(xi, yi, inter_par):
         A1 = np.concatenate((A, np.transpose(V)), axis=1)
         A2 = np.concatenate((V, np.zeros(shape=(n + 1, n + 1))), axis=1)
         yi = yi[np.newaxis, :]
-        # print(yi.shape)
         b = np.concatenate([np.transpose(yi), np.zeros(shape=(n + 1, 1))])
-        #      b = np.concatenate((np.transpose(yi), np.zeros(shape=(n+1,1) )), axis=0)
         A = np.concatenate((A1, A2), axis=0)
         wv = np.linalg.solve(A, b)
         inter_par.w = wv[:m]
@@ -208,9 +205,9 @@ def regressionparametarization(xi, yi, sigma, inter_par):
             wv = np.copy(wv.reshape(-1, 1))
         else:
             rho = 1.1
-            fun = lambda rho: smoothing_polyharmonic(rho, A, V, sigma, yi, n, N, 1)
+            fun = lambda rho: smoothing_polyharmonic(rho, A, V, sigma, yi, n, N)[0]
             rho = optimize.fsolve(fun, rho)
-            b, db, wv = smoothing_polyharmonic(rho, A, V, sigma, yi, n, N, 3)
+            b, db, wv = smoothing_polyharmonic(rho, A, V, sigma, yi, n, N)
         inter_par.w = wv[:N]
         inter_par.v = wv[N:N + n + 1]
         inter_par.xi = xi
@@ -222,16 +219,13 @@ def regressionparametarization(xi, yi, sigma, inter_par):
             if residual < 2:
                 break
             rho *= 0.9
-            b, db, wv = smoothing_polyharmonic(rho, A, V, sigma, yi, n, N, 3)
+            b, db, wv = smoothing_polyharmonic(rho, A, V, sigma, yi, n, N)
             inter_par.w = wv[:N]
             inter_par.v = wv[N:N + n + 1]
     return inter_par, yp
 
 
-def smoothing_polyharmonic(rho, A, V, sigma, yi, n, N, num_arg):
-    # Notice: num_arg = 1 will return b
-    #         num_arg = 2 will return db
-    #         num_arg = else will return b,db,wv
+def smoothing_polyharmonic(rho, A, V, sigma, yi, n, N):
     A01 = np.concatenate((A + rho * np.diag(sigma ** 2), np.transpose(V)), axis=1)
     A02 = np.concatenate((V, np.zeros(shape=(n + 1, n + 1))), axis=1)
     A1 = np.concatenate((A01, A02), axis=0)
@@ -241,12 +235,7 @@ def smoothing_polyharmonic(rho, A, V, sigma, yi, n, N, num_arg):
     bdwv = np.concatenate([np.multiply(wv[:N], sigma.reshape(-1, 1) ** 2), np.zeros((n + 1, 1))])
     Dwv = np.linalg.solve(-A1, bdwv)
     db = 2 * np.mean(np.multiply(wv[:N] ** 2 * rho + rho ** 2 * np.multiply(wv[:N], Dwv[:N]), sigma ** 2))
-    if num_arg == 1:
-        return b
-    elif num_arg == 2:
-        return db
-    else:
-        return b, db, wv
+    return b, db, wv
 
 
 def interpolate_hessian(x, inter_par):
@@ -300,33 +289,34 @@ def interpolate_grad(x, inter_par):
     return g
 
 
-def inter_min(x, inter_par, Ain=[], bin=[]):
-    # %find the minimizer of the interpolating function starting with x
-    rho = 0.9  # backtracking paramtere
+#TODO inter_min has been fixed
+def inter_min(x, inter_par, lb=[], ub=[]):   # TODO fixed for now, quite different with matlab !!!
+    # Find the minimizer of the interpolating function starting with x
+    rho = 0.9  # backtracking parameter  # TODO didnt use rho parameter
     n = x.shape[0]
-    #     start the serafh method
-    iter = 0
     x0 = np.zeros((n, 1))
-    # while iter < 10:
-    H = np.zeros((n, n))
-    g = np.zeros((n, 1))
-    y = interpolate_val(x, inter_par)
-    g = interpolate_grad(x, inter_par)
-    # H = interpolate_hessian(x, inter_par)
-    # Perform the Hessian modification
-    # H = modichol(H, 0.01, 20);
-    # H = (H + H.T)/2.0
-    #         optimizaiton for finding hte right direction
-    objfun3 = lambda x: (interpolate_val(x, inter_par))
+    x = x.reshape(-1, 1)
+    objfun3 = lambda x: interpolate_val(x, inter_par)
     grad_objfun3 = lambda x: interpolate_grad(x, inter_par)
-    res = minimize(objfun3, x0, method='L-BFGS-B', jac=grad_objfun3, options={'gtol': 1e-6, 'disp': True})
-    return res.x, res.fun
+    opt = {'disp': False}
+    bnds = tuple([(0, 1) for i in range(int(n))])
+    res = optimize.minimize(objfun3, x0, jac=grad_objfun3, method='TNC', bounds=bnds, options=opt)
+    x = res.x
+    y = res.fun
+    return x, y
 
 
 #################################### Constant K method ####################################
-
-
 def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
+    '''
+    This function is the core of constant-K continuous search function.
+    :param inter_par: Contains interpolation information w, v.
+    :param xi: The union of xE(Evaluated points) and xU(Support points)
+    :param K: Tuning parameter for constant-K, K = K*K0. K0 is the range of yE.
+    :param ind_min: The correspoding index of minimum of yE.
+    :return: The minimizer, xc, and minimum, yc, of continuous search function.
+    '''
+    inf = 1e+20
     n = xi.shape[0]
     if n == 1:
         sx = sorted(range(xi.shape[1]), key=lambda x: xi[:, x])
@@ -350,9 +340,9 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
         x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
         Sc[ii] = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
         if np.sum(ind_min == tri[ii, :]):
-            Scl[ii] = Sc[ii]
+            Scl[ii] = np.copy(Sc[ii])
         else:
-            Scl[ii] = np.inf
+            Scl[ii] = inf
     # Global one
     t = np.min(Sc)
     ind = np.argmin(Sc)
@@ -374,8 +364,8 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
 
 def Constant_K_Search(x0, inter_par, xc, R2, K, lb=[], ub=[]):
     n = x0.shape[0]
-    costfun = lambda x: Contious_search_cost(x, inter_par, xc, R2, K, 1)
-    costjac = lambda x: Contious_search_cost(x, inter_par, xc, R2, K, 2)
+    costfun = lambda x: Contious_search_cost(x, inter_par, xc, R2, K)[0]
+    costjac = lambda x: Contious_search_cost(x, inter_par, xc, R2, K)[1]
     opt = {'disp': False}
     bnds = tuple([(0, 1) for i in range(int(n))])
     res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
@@ -384,27 +374,150 @@ def Constant_K_Search(x0, inter_par, xc, R2, K, lb=[], ub=[]):
     return x, y
 
 
-# value of consatn K search
-def Contious_search_cost(x, inter_par, xc, R2, K, num_arg):
+# value of constant K search
+def Contious_search_cost(x, inter_par, xc, R2, K):
     # if num_arg == 1: return M
     # if num_arg == 2: return DM
     x = x.reshape(-1, 1)
     M = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
     DM = interpolate_grad(x, inter_par) + 2 * K * (x - xc)
-    if num_arg == 1:
-        return M
-    if num_arg == 2:
-        return DM.T
+    return M, DM.T
 
 
+#################################### Adaptive K method ####################################
+def search_cost_AdaptiveK(x, inter_par, xc, R2, y0):
+    x = x.reshape(-1, 1)
+    p = interpolate_val(x, inter_par)
+    e = (R2 - np.linalg.norm(x - xc) ** 2)
+    # search function value
+    M = -e * 1.0 / (p - y0)
+    # M = (p-y0)/e
+    if p < y0:
+        # M=float("inf")
+        M = -M * np.inf
+
+    # gradient of search
+    gp = interpolate_grad(x, inter_par)
+    ge = -2 * (x - xc)
+    DM = -ge / (p - y0) + e * gp / (p - y0) ** 2.0
+    # DM =  (e * gp )/ (e)**2.0 - ge*(p - y0)/e**2
+    if p < y0:
+        DM = gp * 0
+
+    return M, DM.T
+
+def Adoptive_K_Search_new(x0, inter_par, xc, R2, y0, lb=[], ub=[]):
+    # Find the minimizer of the search fucntion in a simplex
+    n = x0.shape[0]
+    costfun = lambda x: search_cost_AdaptiveK(x, inter_par, xc, R2, y0)[0]
+    costjac = lambda x: search_cost_AdaptiveK(x, inter_par, xc, R2, y0)[1]
+    # opt = {'disp': False, 'maxiter': 15}
+    opt = {'disp': False}
+    # TODO: boundas 0 to 1 all dimetnsions.. fix with lb and ub
+    bnds = tuple([(0, 1) for i in range(int(n))])
+    # res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
+    res = optimize.minimize(costfun, x0, jac=costjac, method='SLSQP', bounds=bnds, options=opt)
+
+    x = res.x
+    y = res.fun
+    return x, y
+
+
+def tringulation_search_bound(inter_par, xi, y0, ind_min):
+    inf = 1e+20
+    n = xi.shape[0]
+    xm, ym = inter_min(xi[:, ind_min], inter_par)
+    ym = ym[0, 0]  # If using scipy package, ym would first be a two dimensions array.
+    sc_min = inf
+    # cse=1
+    if ym > y0:
+        ym = inf
+    # cse =2
+    # construct Deluanay tringulation
+    if n == 1:
+        sx = sorted(range(xi.shape[1]), key=lambda x: xi[:, x])
+        tri = np.zeros((xi.shape[1] - 1, 2))
+        tri[:, 0] = sx[:xi.shape[1] - 1]
+        tri[:, 1] = sx[1:]
+        tri = tri.astype(np.int32)
+    else:
+        options = 'Qt Qbb Qc' if n <= 3 else 'Qt Qbb Qc Qx'
+        tri = scipy.spatial.Delaunay(xi.T, qhull_options=options).simplices
+        keep = np.ones(len(tri), dtype=bool)
+        for i, t in enumerate(tri):
+            if abs(np.linalg.det(np.hstack((xi.T[t], np.ones([1, n + 1]).T)))) < 1E-15:
+                keep[i] = False  # Point is coplanar, we don't want to keep it
+        tri = tri[keep]
+
+    Sc = np.zeros([np.shape(tri)[0]])
+    Scl = np.zeros([np.shape(tri)[0]])
+    for ii in range(np.shape(tri)[0]):
+        R2, xc = circhyp(xi[:, tri[ii, :]], n)
+        # if R2 != np.inf:
+        if R2 < inf:
+            # initialze with body center of each simplex
+            x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
+            Sc[ii] = (interpolate_val(x, inter_par) - y0) / (R2 - np.linalg.norm(x - xc) ** 2)
+            if np.sum(ind_min == tri[ii, :]):
+                Scl[ii] = np.copy(Sc[ii])
+            else:
+                Scl[ii] = inf
+        else:
+            Scl[ii] = inf
+            Sc[ii] = inf
+
+    # Global one
+    sc_min = np.min(Sc)
+    ind = np.argmin(Sc)
+    R2, xc = circhyp(xi[:, tri[ind, :]], n)
+    x = np.dot(xi[:, tri[ind, :]], np.ones([n + 1, 1]) / (n + 1))
+    xm, ym = Adoptive_K_Search_new(x, inter_par, xc, R2, y0)
+    # Local one
+    sc_min = np.min(Scl)
+    ind = np.argmin(Scl)
+    R2, xc = circhyp(xi[:, tri[ind, :]], n)
+    # Notice!! ind_min may have a problen as an index
+    x = np.copy(xi[:, ind_min])
+    xml, yml = Adoptive_K_Search_new(x, inter_par, xc, R2, y0)
+    if yml < 2 * ym:
+        xm = np.copy(xml)
+        ym = np.copy(yml)
+
+    return xm, ym
 ############################### Cartesian Lattice functions ######################
+def add_sup(xE, xU):
+    '''
+    To avoid duplicate values in support points for Delaunay Triangulation.
+    :param xE: Evaluated points.
+    :param xU: Support points.
+    return: Combination of xE and xU
+    '''
+    xs = xE
+    for i in range(xU.shape[1]):
+        for j in range(xE.shape[1]):
+            if xU[:, i].all() == xE[:, j].all():
+                continue
+            if j == xE.shape[1] - 1:
+                xs = np.hstack(( xs, xU[:, i].reshape(-1, 1) ))
+    return xs
+
 
 def ismember(A, B):
     return [np.sum(a == B) for a in A]
 
 
 def points_neighbers_find(x, xE, xU, Bin, Ain):
-    # delta_general, index1,x1 = mindis(x, np.concatenate((xE,xU ), axis=1) )
+    '''
+    This function aims for checking whether it's activated iteration or inactivated.
+    If activated: perform function evaluation.
+    Else: add the point to support points.
+    :param x: Minimizer of continuous search function.
+    :param xE: Evaluated points.
+    :param xU: Support points.
+    :return: x, xE is unchanged. 
+                If success == 1: evaluate x.
+                Else: Add x to xU.
+    '''
     x = x.reshape(-1, 1)
     x1 = mindis(x, np.concatenate((xE, xU), axis=1))[2].reshape(-1, 1)
     active_cons = []
@@ -433,8 +546,118 @@ def points_neighbers_find(x, xE, xU, Bin, Ain):
     return x, xE, xU, newadd, success
 
 
+############################################ Plot ############################################
+def plot_alpha_dogs(xE, xU, yE, SigmaT, xc_min, yc, yd, funr, num_iter, K, L, Nm):
+    '''
+    This function is set for plotting Alpha-DOGS algorithm on toy problem, e.g. Schwefel function, containing:
+    continuous search function, discrete search function, regression function, truth function and function evaluation.
+    
+    :param xE: Evaluated points.
+    :param xU: Support points, useful for building continuous function.
+    :param yE: Function evaluation of xE.
+    :param SigmaT: Uncertainty on xE.
+    :param xc_min: Minimum point of continuous search function at this iteration.
+    :param yc: Minimum of continuous search function built by piecewise quadratic model.
+    :param yd: Minimum of discrete search function.
+    :param funr: Truth function.
+    :param num_iter: Number of iteration.
+    :param K: Tuning parameter of continuous search function.
+    :param L: Tuning parameter of discrete search function.
+    :param Nm: Mesh size.
+    :return: Plot for each iteration of Alpha-DOGS algorithm, save the fig at 'plot' folder.
+    '''
+    #####   Generates plots of cs, ds and function evaluation   ######
+    n = xE.shape[0]
+    K0 = np.ptp(yE, axis=0)
+    #####  Plot the truth function  #####
+    plt.figure()
+    axes = plt.gca()
+    axes.set_ylim([-4, 4])
+    xall = np.arange(-0.05, 1.01, 0.001)
+    yall = np.arange(-0.05, 1.01, 0.001)
+    for i in range(len(xall)):
+        yall[i] = funr(np.array([xall[i]]))
+    plt.plot(xall, yall, 'k-', label='Truth function')
+    inter_par = Inter_par(method="NPS")
+    ##### Plot the discrete search function  #####
+    [interpo_par, yp] = regressionparametarization(xE, yE, SigmaT, inter_par)
+    sd = np.amin((yp, 2 * yE - yp), 0) - L * SigmaT
+    plt.scatter(xE[0], sd, color='r', marker='s', s=15, label='Discrete search function')
+    ##### Plot the continuous search function  #####
+    xi = np.hstack([xE, xU])
+    sx = sorted(range(xi.shape[1]), key=lambda x: xi[:, x])
+    tri = np.zeros((xi.shape[1] - 1, 2))
+    tri[:, 0] = sx[:xi.shape[1] - 1]
+    tri[:, 1] = sx[1:]
+    tri = tri.astype(np.int32)
+    Sc = np.array([])
+    
+    K0 = np.ptp(yE, axis=0) 
+    for ii in range(len(tri)):
+        temp_x = xi[:, tri[ii, :]]
+        x = np.arange(temp_x[0, 0], temp_x[0, 1]+0.005, 0.005)
+        temp_Sc = np.zeros(len(x))
+        R2, xc = circhyp(xi[:, tri[ii, :]], n)
+        for jj in range(len(x)):
+            temp_Sc[jj] = interpolate_val(x[jj], inter_par) - K * K0 * (R2 - np.linalg.norm(x[jj] - xc) ** 2)
+        Sc = np.hstack([Sc, temp_Sc])          
+    x_sc = np.linspace(0, np.max(xi), len(Sc))
+    plt.plot(x_sc, Sc, 'g--', label='Continuous search function')
+    #####  Plot the separable point for continuous search function  #####
+    sscc = np.zeros(xE.shape[1])
+    for j in range(len(sscc)):
+        for i in range(len(x_sc)):
+            if norm(x_sc[i] - xE[0, j]) < 6*1e-3:
+                sscc[j] = Sc[i]
+    plt.scatter(xE[0], sscc, color='green', s=10)
+    #####  Plot the errorbar  #####
+    plt.errorbar(xE[0], yE, yerr=SigmaT, fmt='o', label='Function evaluation')
+    ########    plot the regression function   ########
+    yrall = np.arange(-0.05, 1.01, 0.001)
+    for i in range(len(yrall)):
+        yrall[i] = interpolate_val(xall[i], inter_par)
+    plt.plot(xall, yrall, 'b--', label='Regression function')
+    
+    if mindis(xc_min, xE)[0] < 1e-6:
+        plt.annotate('Mesh Refinement Iteration', xy=(0.6, 3.5), fontsize=8)
+    else:
+        if yc < yd:
+            #####  Plot the minimum of continuous search function as star  #####
+            plt.scatter(xc_min, np.min(Sc), marker=(5, 2))
+            #####  Plot the arrowhead  point at minimum of continuous search funtion  #####
+            plt.annotate('Identifying sampling', xy=(xc_min, np.min(Sc)), 
+                         xytext=(np.abs(xc_min-0.5), np.min(Sc)-1),
+                                arrowprops=dict(facecolor='black', shrink=0.05))
+                        
+        else:
+            #####  Plot the arrowhead  point at minimum of discrete search funtion  #####
+            xd = xE[:, np.argmin(sd)]
+            plt.annotate('Supplemental Sampling', xy=(xd[0], np.min(sd)), xytext=(np.abs(xd[0]-0.5), np.min(sd)-1),
+                         arrowprops=dict(facecolor='black', shrink=0.05))
+    ##### Plot the information about algorithm's iteration  #####
+    plt.annotate('#Iterations = ' + str(int(num_iter)), xy=(0, 3.5), fontsize=8)
+    plt.annotate('Mesh size = ' + str(int(Nm)), xy=(0.35, 3.5), fontsize=8, color='b')
+    plt.annotate('K = ' + str(int(K)), xy=(0.35, 3), fontsize=8, color='b')
+    plt.annotate('Range(Y) = ' + str(float("{0:.4f}".format(K0))), xy=(0.28, 2.5), fontsize=8, color='b')
+    plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+               ncol=2, mode="expand", prop={'size': 6}, borderaxespad=0.)
+    plt.grid()
+    ##### Check if the folder 'plot' exists or not  #####
+    current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    plot_folder = current_path + "/plot"
+    if not os.path.exists(plot_folder):
+        os.makedirs(plot_folder)    
+    # Save fig
+    plt.savefig('plot/cd_movie' + str(num_iter) +'.png', format='png', dpi=1000)    
+    return 
 ############################################ Test Examples ############################################
 def read_str(S, judge):
+    '''
+    This function is designed for reading input from 'dat' file. 
+    :param S: Input string has the form: string=numbers.
+    :param judge: judge == 'i', means int, judge == 'f' means float.
+    :return: Input numbers .
+    '''
     s = S[0]
     for i in range(len(s)):
         if s[i] != '=':
@@ -449,77 +672,153 @@ def read_str(S, judge):
         r = float(r)
     return r
 
+    
+def solver_lorenz_alpha_DOGS_and_X(x, t, h, alg):
+    '''
+    This Solver is set for implementing Alpha-DOGSX algorithmon Lorenz system.
+    :param x: Point of interest. This point is in physical bound.
+    :param T: Total attractor time at current point.
+    :param h: Step size
+    :param alg: The optimization method, should be "alpha_dogs" or 1 = "alpha_dogsx". 
+    :return: Function evaluation at x, uncertainty sig at x.
+    '''
+    x1 = x.reshape(-1, 1)
+    n = len(x1)                                     # n represents the dimension of data
 
-def solver(x, fun_arg, flag=1):
-    # the noise level
-    sigma0 = 0.3
-    T0 = 1
-    if fun_arg == 1:  # Quadratic
-        funr = lambda x: 5 * np.linalg.norm(x - 0.3) ** 2
-        fun = lambda x: 5 * np.linalg.norm(x - 0.3) ** 2 + sigma0 * np.random.randn()
+    var_opt = io.loadmat("allpoints/pre_opt")
+    idx = var_opt['num_point'][0, 0]
+    flag = var_opt['flag'][0, 0]
+    DT = 10                                        # Time length increment for alpha_dogs
+    time_method = 1                                # RK4
+    sigma0 = 3
 
-    elif fun_arg == 2:  # Schwefel
-        funr = lambda x: -sum(np.multiply(500 * x, np.sin(np.sqrt(abs(500 * x))))) / 250
-        fun = lambda x: -sum(np.multiply(500 * x, np.sin(np.sqrt(abs(500 * x))))) / 250 + sigma0 * np.random.randn()
-        if flag == 1: # new point
+    # sigma0 = 3
+    # sig = sigma0 / np.sqrt(t) + 0.8 * h ** 3
 
-            y = fun(x)
-            T = T0
-            sigmaT = sigma0 / np.sqrt(T)
-            return y, sigmaT, T
-
-        else:
-
-            fin = open("PtsToEval/surr_J_new.dat", "r")
-            T_exist = int(fin.readline())
-            y_exist = float(fin.readline())
-            fin.close()
-
-            T = T_exist + T0
-            y = (fun(x) + y_exist * T_exist) / T
-            # UQ method...!!!!!!
-            sigmaT = sigma0 / np.sqrt(T)
-
-            return y, sigmaT, T
-
-        # rastinginn
-    elif fun_arg == 3:
-        A = 3
-        funr = lambda x: sum((x - 0.7) ** 2 - A * np.cos(2 * np.pi * (x - 0.7)))
-        fun = lambda x: sum((x - 0.7) ** 2 - A * np.cos(2 * np.pi * (x - 0.7))) + sigma0 * np.random.randn()
-
-    elif fun_arg == 4:
-        #     lorenz attractor
-        var_opt = io.loadmat("allpoints/pre_opt")
-        idx = var_opt['num_point'][0, 0]
-        flag = var_opt['flag'][0, 0]
-        bnd1 = var_opt['lb'][0]
-        bnd2 = var_opt['ub'][0]
-        T_lorenz = var_opt['T_lorenz'][0, 0]
-        h = var_opt['h_lorenz'][0, 0]
+    if n == 1:
         y0 = np.array([23.5712])
-        time_method = 1
-        DT = 10
+    elif n == 2:
+        y0 = np.array([23.5712, 8.6107])
+        
+    if flag != 2:
+        if flag == 1:   # flag 1 : new point, alpha_dogs is the same with alpha_dogsx
+            J, zs, ys, xs = lorenz.lorenz_lost2(x, t, h, y0, time_method)
 
-        if flag == 1:   # flag 1 : new point
-
-            J, zs, ys, xs = lorenz.lorenz_lost2(x, T_lorenz, h, bnd2, bnd1, y0, time_method)
-            xx = uq.data_moving_average(zs, 40).values
-            sigmaT = np.sqrt(uq.stationary_statistical_learning_reduced(xx, 18)[0])
-
-            return J, zs, ys, xs, sigmaT, T_lorenz
-
-        else:  # flag = 0: existing point
-
+        elif flag == 0:  # flag = 0: existing point
             data = io.loadmat("allpoints/pt_to_eval" + str(idx) + ".mat")
-            T_zs_lorenz = data['T'][0]
+            T_zs_lorenz = data['T'][0, 0]
+            h_pre = data['h'][0, 0]
+            if np.abs(h - h_pre) < 1e-5:
+                if alg == "alpha_dogs":  
+                    t = T_zs_lorenz + DT
+#                elif alg == "alpha_dogsx":
+#                    t += T_zs_lorenz
+                J, zs, ys, xs = lorenz.lorenz_lost2(x, t, h, y0, time_method, idx)
+            elif h != h_pre:
+                J, zs, ys, xs = lorenz.lorenz_lost2(x, t, h, y0, time_method)
 
-            J, zs, ys, xs = lorenz.lorenz_lost2(x, T_zs_lorenz + DT, h, bnd2, bnd1, y0, time_method, idx)
-            xx = uq.data_moving_average(zs, 40).values
-            sigmaT = np.sqrt(uq.stationary_statistical_learning_reduced(xx, 18)[0])
+        if n == 1:
+            # First way to calculate sigma, using UQ from Shahrouz
+            length = int(min((t/h)/5, 40))
+            xx = uq.data_moving_average(zs, length).values
+            sig = np.sqrt(uq.stationary_statistical_learning_reduced(xx, 18)[0])  # Work for 1D Lorenz.
 
-            return J, zs, ys, xs, sigmaT, T_zs_lorenz + DT
+            # Second way to calculate sigma
+#            sig = sigma0 / np.sqrt(t) + 0.8 * h ** 3
+        elif n == 2:
+            # sig = sigma0 / np.sqrt(t/h) + 0.8 * h ** 3
+            sig = sigma0 / np.sqrt(t) + 0.8 * h ** 3  # Temporary working for 2D Lorenz, without theory.
+            # sig = uq.statistical_std(zs)  # Not working.
+            
+        fout = {'zs': zs, 'ys': ys, 'xs': xs, 'h': h, 'T': t, 'J': J}
+        io.savemat("allpoints/pt_to_eval" + str(idx) + ".mat", fout)
 
+        return J, sig, t, h
+    else:  # flag == 2, no function evaluation.
+        return
+
+
+def fit_sigma0():
+    data = io.loadmat("STD_VS_T.mat")
+    T = data["T"]
+    std = data["STD"]
+    return np.exp(np.mean(np.log(std) + 1 / 2 * np.log(T)))
+
+
+def alpha_X_mesh_sampling(d_sigma, sigma, T0, h0, sigma0):
+    DT = 10
+    C0 = 0.8
+    cost_min = 1e+10
+    h1 = h0 / 2
+    T1 = np.ceil( ( sigma0 / (sigma-d_sigma-C0*h1**3) )**2 )
+    cost_l = T1 / h1
+    if cost_l < cost_min:
+        cost_min = cost_l
+        hnew = h1
+        Tnew = T1
+    else:
+        d_sigma /= 2
+    for l in range(10):
+        if cost_min > 1e+10:   # Computation cost too large, divide the required delta sigma by 2.
+            d_sigma /= 2
+        else:
+            h1 /= 2            # Computation cost is moderate, try another time step length h.
+        T1 = np.ceil( ( sigma0 / (sigma-d_sigma-C0*h1**3) )**2 )
+        cost_l = T1 / h1
+#            else:
+#                cost_l = (T1 - T0) / h1
+        if cost_l < cost_min and h1 > 5e-3 - 1e-6:
+            cost_min = cost_l
+            hnew = h1
+            Tnew = T1
+        if cost_min > 1e+5:
+            d_sigma /= 2
+        print('=============================')
+        print('d_sigma = ', d_sigma)
+        print('l = ', l, 'h = ', h1, 'T1 = ', T1)
+        print('Tnew = ', Tnew, 'hnew = ', hnew)
+        print('cost_l = ', cost_l, 'cost_min = ', cost_min)
+    if h0 < 5e-4:
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        print('h0 < 5e-4')
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        hnew = 0.005
+    if cost_min > 1e+10:
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        print('cost_min > 1e+10')
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        Tnew =T0 + 10 * DT
+    if h0 < 5e-4:
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        print('h0 < 5e-4')
+        print('!!!!!!!!!!!!!!!!!!!!!!!!!!')
+        hnew = 0.005
+    cost_min = Tnew/hnew
+    print('============  Summary  =================')
+    print('cost_min = ', cost_min)
+    print('cost_l = ', cost_l)
+    print('Tnew = ', Tnew)
+    print('hnew = ', hnew)
+    return Tnew, hnew
+
+
+def fe_schwefel(x, h, T, sigma0, C0, p, yp=0, Tp=0):
+    '''
+    Define the function evaluation of schwefel toy problem based on alpha-DOGSX algorithm.
+    :param x: Arguments of function evaluation.
+    :param h: The time step h used for generating synthetic discretization error.
+    return : Function evaluation containing sample error and discretization error, and 2 kinds of errors.
+    '''
+    sum_error = 0
+    for i in range(T):
+        sum_error += sigma0 * np.random.randn()
+    y = -sum(np.multiply(500 * x, np.sin(np.sqrt(abs(500 * x))))) / 250 + (yp * Tp + sum_error) / (T + Tp)
+    # sr: sampling error
+    sr = sigma0 / np.sqrt(T + Tp)
+    # dr: discretization error
+    dr = C0 * h**p
+    sig = sr + dr
+    return y, sig
 
 #############################           LORENZ             ##################################################
 def normalize_bounds(x0, lb, ub):
@@ -548,7 +847,22 @@ def physical_bounds(x0, lb, ub):
     for i in range(n):
         for j in range(m):
             x[i][j] = (x[i][j])*(ub[i] - lb[i]) + lb[i]
+
     return x
+#########################  Sensitivity Analysis ##########################################
+
+
+def sensitivity_analysis(x, y, p):
+    n = x.shape[0]
+    # ssf is the sum of squares due to the factor \hat{x_j}
+    ssf = np.zeros(n)
+    for i in range(n):
+        u, indices = np.unique(x[i], return_inverse=True)
+        sim_j = np.array([ jj == x[i] for jj in u])
+        ssf[i] = np.sum(np.sum(sim_j, axis=1) * (np.array([ np.mean(y[sim_j[i]]) for i in range(sim_j.shape[0]) ]) - np.mean(y))**2)
+    ssf /= np.sum((y-np.mean(y))**2)
+    index = ssf.argsort()[-p:][::-1]
+    return index
 #########################  Check for the time of generating files ##########################################
 
 
@@ -602,12 +916,12 @@ def solver_lorenz():  # flag = 1 : new point
     if flag != 2:
         if flag == 1:  # flag = 1: new point
             T = T_lorenz
-            J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, bnd2, bnd1, y0, time_method)
+            J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, y0, time_method)
         elif flag == 0:  # flag = 0: existing point
             data = io.loadmat("allpoints/pt_to_eval" + str(idx) + ".mat")
             T_zs_lorenz = data['T'][0, 0]
             T = T_zs_lorenz + DT
-            J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, bnd2, bnd1, y0, time_method, idx)
+            J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, y0, time_method, idx)
 
         fout_surr = open("allpoints/surr_J_new.dat", "w")
         for i in range(zs.shape[0]):
@@ -684,21 +998,7 @@ def DOGS_standalone_IC():
             yE[idx] = J
             SigmaT[idx] = sig
             T[idx] = len(zs)
-        #
-        # elif sign == 0 and fe_times[idx] == 3:  # sign = 0: function evaluation is failed
-        #     if idx == xE.shape[1]:  # This point is a new point
-        #         # Already performed 3 function evaluation
-        #         yE = np.hstack((yE, np.inf))
-        #         SigmaT = np.hstack((SigmaT, 0))
-        #         T = np.hstack((T, 1))
-        #     # else if this point is already evaluated, we just use the previous value.
-        #
-        # elif sign == 0 and fe_times[idx] < 3:
-        #     fe_times[idx] += 1
-        #     var_opt['fe_times'] = fe_times
-        #     io.savemat("allpoints/pre_opt_IC", var_opt)
-        #
-        #     return
+
     #############################################################################
     # The following only for displaying information.
     # NOTICE : Deleting following lines won't cause any affect.
@@ -756,7 +1056,8 @@ def DOGS_standalone_IC():
             xU = scipy.delete(xU, ind, 1)  # delete the minimum element in xU, which is going to be incorporated in xE
         else:
             while 1:
-                xc, yc = tringulation_search_bound_constantK(inter_par, np.hstack([xE, xU]), K * K0, ind_min)
+                xs = add_sup(xE, xU)
+                xc, yc = tringulation_search_bound_constantK(inter_par, xs, K * K0, ind_min)
                 yc = yc[0, 0]
                 if interpolate_val(xc, inter_par) < min(yp):
                     xc = np.round(xc * Nm) / Nm
@@ -775,7 +1076,7 @@ def DOGS_standalone_IC():
 
             if xU.shape[1] != 0 and mindis(xc, xE)[0] > 1e-10:
                 tmp = (interpolate_val(xc, inter_par) - min(yp)) / mindis(xc, xE)[0]
-                if np.amin(yu) < tmp:
+                if 3*np.amin(yu) < tmp:
                     ind = np.argmin(yu)
                     xc = np.copy(xU[:, ind])
                     yc = -np.inf
@@ -954,7 +1255,7 @@ def Delta_DOGS_standalone():
 
     inter_par = Inter_par(method=method)
     [inter_par, yp] = regressionparametarization(xE, yE, SigmaT, inter_par)
-    K0 = 0.002 # K0 = np.ptp(yE, axis=0)# range of the objective function
+    K0 = 20# K0 = np.ptp(yE, axis=0)
     # Calculate the discrete function.
     ind_out = np.argmin(yp + SigmaT)
     sd = np.amin((yp, 2 * yE - yp), 0) - L * SigmaT

@@ -3,9 +3,8 @@ import os, inspect
 import dogs, uq
 import scipy.io as io
 from pathlib import Path
-import tr
 import shutil
-import platform
+import tr
 
 ##########  Initialize function ##########
 
@@ -17,7 +16,7 @@ def Initialize_IC():
     # if not os.path.exists(apts):
     #     os.makedirs(apts)
     
-    n = 3  # Dimension of data
+    n = 1  # Dimension of data
     K = 3  # Tuning parameter for continuous search function
     Nm = 8  # Initial mesh grid size
     L = 1  # Tuning parameter for discrete search function
@@ -50,7 +49,7 @@ def Initialize_IC():
     xU = dogs.physical_bounds(xU, bnd1, bnd2)
     
     k = 0  # times of iteration, start with 0
-    iter_max = 500  # maximum iteration steps
+    iter_max = 50  # maximum iteration steps
     idx = 0
     
     var_opt = {}
@@ -94,16 +93,13 @@ def DOGS_standlone():
 
     var_opt = io.loadmat("allpoints/pre_opt_IC")
     k = var_opt['iter'][0, 0]
-    idx = var_opt['num_point'][0, 0]
     flag = var_opt['flag'][0, 0]
-    # fe_times = var_opt['fe_times']
 
     # initilizaiton
     if k == 0:  # k is the number of iteration. k = 0 means that the initialization is not finished.
 
         if pre_Y_path.is_file():  # The file 'Yall' exists.
-            # sign = dogs.function_evaluation_sign()
-            # read the previous points
+            # Read from the previous points
             data = io.loadmat("allpoints/Yall")
             yE = data['yE'][0]
             SigmaT = data['SigmaT'][0]
@@ -114,48 +110,27 @@ def DOGS_standlone():
             xx = uq.data_moving_average(zs, 40).values
             ind = tr.transient_removal(xx)
             sig = np.sqrt(uq.stationary_statistical_learning_reduced(xx[ind:], 18)[0])
-            t = len(zs)  # not needed for Alpha-DOGS
+            t = len(zs)  # not needed for Alpha-DOGS  # TODO fix the length of data
             J = np.abs(np.mean(xx[ind:]))
 
             yE = np.hstack((yE, J))
             SigmaT = np.hstack((SigmaT, sig))
             T = np.hstack((T, t))
-            # fe_times = np.hstack((fe_times, 1))
 
             data = {'yE': yE, 'SigmaT': SigmaT, 'T': T}
             io.savemat("allpoints/Yall", data)
 
             print(' len of yE = ', len(yE))
 
-            # elif sign == 0 and fe_times[idx] == 3:
-            #     # Already performed 3 function evaluation, set this point to be inf.
-            #     yE = np.hstack((yE, np.inf))
-            #     SigmaT = np.hstack((SigmaT, 0))
-            #     T = np.hstack((T, 1))
-            #
-            #     data = {'yE': yE, 'SigmaT': SigmaT, 'T': T}
-            #     io.savemat("allpoints/Yall", data)
-            #
-            # elif sign == 0 and fe_times[idx] < 3:
-            #     fe_times[idx] += 1
-            #     var_opt['fe_times'] = fe_times
-            #     io.savemat("allpoints/pre_opt_IC", var_opt)
-            #
-            #     return
-
         else:
             if not pre_J_path.is_file():
                 # The very first iteration, the file 'Yall' doesn't exist.
                 yE = np.array([])
-                # fe_times = np.array([])
                 print("The first time running the iteration")
                 print(' len of yE = ', len(yE))
                 print('iter k = ', k)
             else:
                 # The second time of running the algorithm.
-                # First check the function evaluation is successful or not:
-                # sign = dogs.function_evaluation_sign()
-                # if sign == 1:
                 yE = np.array([])
                 SigmaT = np.array([])
                 T = np.array([])
@@ -165,7 +140,7 @@ def DOGS_standlone():
 
                 xx = uq.data_moving_average(zs, 40).values
                 ind = tr.transient_removal(xx)
-                sig = np.sqrt(uq.stationary_statistical_learning_reduced(xx, 18)[0])
+                sig = np.sqrt(uq.stationary_statistical_learning_reduced(xx[ind:], 18)[0])
                 t = len(zs)  # not needed for Alpha-DOGS
                 J = np.abs(np.mean(xx[ind:]))
 
@@ -179,21 +154,6 @@ def DOGS_standlone():
                 print(' len of yE = ', len(yE))
                 print('iter k = ', k)
                 print('function evaluation at this iteration: ', J)
-                # elif sign == 0 and fe_times[idx] == 3:
-                #     # Already performed 3 function evaluation, set this point to be inf.
-                #     yE = np.array([np.inf])
-                #     SigmaT = np.array([0])
-                #     T = np.array([1])
-                #
-                #     data = {'yE': yE, 'SigmaT': SigmaT, 'T': T}
-                #     io.savemat("allpoints/Yall", data)
-                #
-                # elif sign == 0 and fe_times[idx] < 3:
-                #     fe_times[idx] += 1
-                #     var_opt['fe_times'] = fe_times
-                #     io.savemat("allpoints/pre_opt_IC", var_opt)
-                #
-                #     return
 
         # we read pre_opt_IC.mat
         # untill len(yE) < n+1 then k=1
@@ -214,10 +174,8 @@ def DOGS_standlone():
                 fout.write(keywords[j] + '=' + str(float(xcurr[j])) + "\n")
             fout.close()
 
-            # fe_times = np.hstack((fe_times, 1))
             var_opt['iter'] = 0
             var_opt['num_point'] = len(yE)
-            # var_opt['fe_times'] = fe_times
             io.savemat("allpoints/pre_opt_IC", var_opt)
 
             print('point to eval at this iteration x = ', xcurr)
@@ -228,33 +186,24 @@ def DOGS_standlone():
 
             # Initialization complete
             var_opt['iter'] = 1
-
             io.savemat("allpoints/pre_opt_IC", var_opt)
-
-            # The following are just for displaying:
-            print('==================================================')
-            print('==================================================')
-            print('iter k = ', var_opt['iter'])
-            # r = input('Initializtion complete, type anything to continue: ')
-
             # Run one iteration after initialization.
             if pre_J_path.is_file():
                 dogs.DOGS_standalone_IC()
-                os.remove(current_path + "/allpoints" + "/" + "surr_J_new.dat")
+                os.remove(current_path + "/allpoints/surr_J_new.dat")
                 return
             else:
                 return
 
     else:
-        if pre_J_path.is_file():
-            # TODO: delete the surr_J_new.dat
+        if pre_J_path.is_file():  # If surr_J_new exists, function evaluation is succeeded.
             dogs.DOGS_standalone_IC()
             var_opt = io.loadmat("allpoints/pre_opt_IC")
             flag = var_opt['flag'][0, 0]
-            if flag != 2:
-                os.remove(current_path + "/allpoints" + "/" + "surr_J_new.dat")
+            if flag != 2:  # If flag == 2, mesh refinement, perform one more iteration.
+                os.remove(current_path + "/allpoints/surr_J_new.dat")
             return
-        else:
+        else:  # function evaluation is failed, reperform functon evaluation
             return
 
 

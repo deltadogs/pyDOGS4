@@ -85,29 +85,27 @@ def lorenz2(x, s=10, r=28, b=2.667):
     return x_dot
 
 
-def lorenz_lost2(xi, T, h, bnd2, bnd1, y0 = 0,  method=1, ind_exist=-1):
+def lorenz_lost2(xi, T, h, y0=0,  method=1, ind_exist=-1):
     '''
-
-    :param x0: (s,r,b) point of interest. This is normalized 0<x0<1
+    :param xi: (s,r,b) point of interest. This is normalized 0<x0<1
     :param T:  total attractor time
     :param h: step size
     :param ind_exist: index of point from evaluated set
     :param y0: target value
     :return:
     '''
-    s0 = 10
-    r0 = 28
-    b0 = 2.667
+    s0 = np.array([[10]])
+    r0 = np.array([[28]])
+    b0 = np.array([[2.667]])
     xiT = xi.reshape(-1, 1)
     n = xiT.shape[0]
     x0 = np.copy(xi)
-    # for ii in range(n):
-    #     x0[ii] = xi[ii]*(bnd2[ii] - bnd1[ii]) + bnd1[ii]
-
     if n == 1:
-        x = np.hstack((s0, x0, b0))
+        x = np.vstack((s0, x0, b0))
+        # x = x.reshape(-1, 1)
     elif n == 2:
-        x = np.hstack((s0, x0))
+        x = np.vstack((s0, x0))
+        # x = x.reshape(-1, 1)
     else:
         x = x0
 
@@ -155,27 +153,18 @@ def lorenz_lost2(xi, T, h, bnd2, bnd1, y0 = 0,  method=1, ind_exist=-1):
     # existing point add this simulation to it
     # ind_exist = # of points + 1
 
-    if ind_exist > 0:
+    if not ind_exist == -1:
         xs = np.hstack((xs0, xs[1:]))
         ys = np.hstack((ys0, ys[1:]))
         zs = np.hstack((zs0, zs[1:]))
-
-        # pt = {'zs': zs, 'ys': ys, 'xs': xs, 'index': ind_exist, 'h': h, 'T': T}
-        # io.savemat('allpoints/pt_to_eval' + str(ind_exist) + '.mat', pt)
-    # else:
-
-        # var_opt = io.loadmat("allpoints/pre_opt")
-        # ind_exist = var_opt['num_point'][0, 0]
-        # pt = {'zs': zs, 'ys': ys, 'xs': xs, 'index': ind_exist, 'h': h, 'T': T}
-        # io.savemat('allpoints/pt_to_eval' + str(ind_exist) + '.mat', pt)
 
     if n == 1:
         J = np.abs(np.mean(zs)-y0)[0]
         return J, zs, ys, xs
     elif n == 2:
-        J = (np.sum(((np.mean(zs)-y0[0])**2, (np.std(zs)-y0[0])**2)))/len(y0)*1.0
+        J = (np.sum(( (np.mean(zs)-y0[0])**2, (np.std(zs)-y0[1])**2 ))) / len(y0)
         return J, zs, ys, xs
     else:
-        J = (np.sum(((np.mean(zs) - y0[0]) ** 2, (np.std(zs) - y0[0]) ** 2))) / len(y0) * 1.0
+        J = (np.sum(((np.mean(zs) - y0[0]) ** 2, (np.std(zs) - y0[1]) ** 2))) / len(y0)
         return J, zs, ys, xs
 

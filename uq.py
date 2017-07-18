@@ -51,40 +51,10 @@ def emprical_sigma(x, s):
     return sigma
 
 
-def stationary_statistical_learning_reduced(x, m):
-    N = len(x)
-    M = math.floor(math.sqrt(N))
-    s = np.arange(1, 2 * M + 1)
-    variance = x.var(axis=0) * len(x) / (len(x) - 1)
-    x = np.divide(x - x.mean(axis=0), ((x.var(axis=0)) * len(x) / (len(x) - 1)) ** (1 / 2))
-
-    sigmac2 = emprical_sigma(x, s)
-    tau = np.arange(1, m + 1) / (m + 1)
-
-    fun = lambda tau: Loss_fun_reduced(tau, sigmac2, 1)
-    jac = lambda tau: Loss_fun_reduced(tau, sigmac2, 2)
-    theta = np.zeros([2 * m])
-    bnds = tuple([(0, 1) for i in range(int(m))])
-    opt = {'disp': False}
-    res_con = optimize.minimize(fun, tau, jac=jac, method='L-BFGS-B', bounds=bnds, options=opt)
-    theta_tau = np.copy(res_con.x)
-
-    theta_A = optimum_A(theta_tau, sigmac2)
-    theta = np.concatenate((theta_A, theta_tau), axis=0)
-    moment2_model, corr_model = Thoe_moment2(np.concatenate((np.array([1]), np.array([0]), theta), axis=0), N)
-
-    sigma2_N = moment2_model[-1] * variance
-    print("sigma2N = ", sigma2_N)
-    return sigma2_N, theta, moment2_model
-
-
-def Loss_fun_reduced(tau, sigmac2, num_arg):
+def Loss_fun_reduced(tau, sigmac2):
     #   This function minimizes the linear part of the loss function that is a least square fit for the varaince of time averaging errror
     #   This is done using alternative manimization as fixing the tau value fixed.
     #   Autocorrelation function is rho = A_1 tau_1^k + ... +A_m tau_m^k
-    #   If num_arg == 1, return L
-    #   If num_arg == 2, return DL
-    #   If num_arg == 3, return L,DL
     L = np.array([0])
     m = len(tau)
     H = np.zeros([m, m])
@@ -110,12 +80,34 @@ def Loss_fun_reduced(tau, sigmac2, num_arg):
     res = optimize.minimize(fun, x0, jac=jac, constraints=cons, method='SLSQP')
     L = res.fun
     DL = np.multiply(DL, res.x)
-    if num_arg == 1:
-        return L
-    elif num_arg == 2:
-        return DL
-    else:
-        return L, DL
+    return L, DL
+
+
+def stationary_statistical_learning_reduced(x, m):
+    N = len(x)
+    M = math.floor(math.sqrt(N))
+    s = np.arange(1, 2 * M + 1)
+    variance = x.var(axis=0) * len(x) / (len(x) - 1)
+    x = np.divide(x - x.mean(axis=0), ((x.var(axis=0)) * len(x) / (len(x) - 1)) ** (1 / 2))
+
+    sigmac2 = emprical_sigma(x, s)
+    tau = np.arange(1, m + 1) / (m + 1)
+
+    fun = lambda tau: Loss_fun_reduced(tau, sigmac2)[0]
+    jac = lambda tau: Loss_fun_reduced(tau, sigmac2)[1]
+    theta = np.zeros([2 * m])
+    bnds = tuple([(0, 1) for i in range(int(m))])
+    opt = {'disp': False}
+    res_con = optimize.minimize(fun, tau, jac=jac, method='L-BFGS-B', bounds=bnds, options=opt)
+    theta_tau = np.copy(res_con.x)
+
+    theta_A = optimum_A(theta_tau, sigmac2)
+    theta = np.concatenate((theta_A, theta_tau), axis=0)
+    moment2_model, corr_model = Thoe_moment2(np.concatenate((np.array([1]), np.array([0]), theta), axis=0), N)
+
+    sigma2_N = moment2_model[-1] * variance
+    print("sigma2N = ", sigma2_N)
+    return sigma2_N, theta, moment2_model
 
 
 def optimum_A(tau, sigmac2):
@@ -300,4 +292,59 @@ def UQ_model_Richardson_stationary(C0, sigma0, T, N, p=3.0):
     return(sigma)
 
 
+#def Loss_fun_reduced(tau, sigmac):
+#    L = 0
+#    DL = 0
+#    # m = len(tau)
+#    # H = np.zeros((m, m))
+#    for ss in range(len(sigmac)):
+#        Ls = 1 / np.sqrt(ss + 1) * tau - sigmac[ss]  # TODO theta = tau
+#        DL = DL + 2 / np.sqrt(ss + 1) - sigmac[ss]  # TODO
+#        L += np.dot(Ls, Ls)
+#
+#    return L, DL
 
+
+#def stationary_statistical_learning_std(x):
+#    N = len(x)
+#    x = (x - np.mean(x)) / np.std(x)
+#    sigmac = empirical_std(x)
+#    fun = lambda tau: Loss_fun_reduced(tau, sigmac)[0]
+#    jac = lambda tau: Loss_fun_reduced(tau, sigmac)[1]
+#    opt = {'disp': False}
+#    bnds  # Undefined.
+#    res = optimize.minimize(fun, 1, jac=jac, method='TNC', bounds=bnds, options=opt) # TODO
+#    theta = res.x
+#    STD = theta / np.sqrt(N)
+#    return STD, theta
+
+
+#def empirical_std(x):
+#    N = len(x)
+#    M = np.floor(np.sqrt(N))
+#    s = np.arange((M, N))  # TODO 1:M ???
+#    for jj in range(len(s)):
+#        STD = np.zeros(len(s))
+#        mu = np.zeros(np.floor(N / s[jj]) - 1)
+#        for i in range(np.floor(N/s[jj])-1):
+#            mu[i] = np.mean(x[ i * s[jj] : (i+1) * s[jj] ])  # TODO mean or std ???
+#        STD[jj] = np.std(mu)
+#    return STD
+
+
+def statistical_std(x):
+    n = len(x)
+    s = np.sqrt( n / (n - 1) * np.var(x))
+    S = s * np.sqrt( np.exp(1) * ( (n - 3) / (n - 2) ) ** (n - 2) * (n-1) / (n-2) -1 )
+    STD = 1/2*(s / np.sqrt(n) + S)
+    return STD
+
+
+def sigma_lorenz2D(x):
+    mu = 23.5712
+    std = 8.6107
+    N = len(x)
+    J = np.zeros(N)
+    for m in range(N):
+        x1 = x[:m+1]
+        J[m] = (np.mean(x1)-mu)**2 + (np.sqrt(m/(m-1)*np.std(x1)**2)-std)**2
