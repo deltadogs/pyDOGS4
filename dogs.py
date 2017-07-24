@@ -14,9 +14,13 @@ from tr import transient_removal
 import lorenz
 import tr
 import platform
+from scipy.linalg import norm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from scipy.linalg import norm
+from matplotlib import cm
+from matplotlib.ticker import LinearLocator, FormatStrFormatter
+
+
 
 '''MIT License
 Copyright (c) 2017
@@ -289,6 +293,33 @@ def interpolate_grad(x, inter_par):
     return g
 
 
+def inter_cost(x,inter_par):
+    x = x.reshape(-1, 1)
+    M = interpolate_val(x, inter_par)
+    DM = interpolate_grad(x, inter_par)
+    return M, DM.T
+    
+    
+def inter_min(x, inter_par, lb=[], ub=[]):
+    # %find the minimizer of the interpolating function starting with x
+    rho = 0.9  # backtracking parameter
+    n = x.shape[0]
+
+    #     start the search method
+    x0 = np.zeros((n, 1))
+
+    #         optimizaiton for finding hte right direction
+    objfun = lambda x: inter_cost(x, inter_par)[0]
+    grad_objfun = lambda x: inter_cost(x, inter_par)[1]
+    opt = {'disp': False}
+    # TODO: boundas 0 to 1 all dimetnsions.. fix with lb and ub
+    bnds = tuple([(0, 1) for i in range(int(n))])
+    res = optimize.minimize(objfun, x0, jac=grad_objfun, method='TNC', bounds=bnds, options=opt)
+    x = res.x
+    y = res.fun
+    return x, y
+
+
 #TODO inter_min has been fixed
 def inter_min(x, inter_par, lb=[], ub=[]):   # TODO fixed for now, quite different with matlab !!!
     # Find the minimizer of the interpolating function starting with x
@@ -318,6 +349,7 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
     '''
     inf = 1e+20
     n = xi.shape[0]
+    # Delaunay Triangulation
     if n == 1:
         sx = sorted(range(xi.shape[1]), key=lambda x: xi[:, x])
         tri = np.zeros((xi.shape[1] - 1, 2))
@@ -332,13 +364,15 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
             if abs(np.linalg.det(np.hstack((xi.T[t], np.ones([1, n + 1]).T)))) < 1E-15:
                 keep[i] = False  # Point is coplanar, we don't want to keep it
         tri = tri[keep]
-
+    # Search the minimum of the synthetic quadratic model
     Sc = np.zeros([np.shape(tri)[0]])
     Scl = np.zeros([np.shape(tri)[0]])
     for ii in range(np.shape(tri)[0]):
+        # R2-circumradius, xc-circumcircle center
         R2, xc = circhyp(xi[:, tri[ii, :]], n)
+        # x is the center of the current simplex
         x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
-        Sc[ii] = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
+        Sc[ii] = interpolate_val(x, inter_par) - K * (R2**2 - np.linalg.norm(x - xc) ** 2)
         if np.sum(ind_min == tri[ii, :]):
             Scl[ii] = np.copy(Sc[ii])
         else:
@@ -353,7 +387,7 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
     t = np.min(Scl)
     ind = np.argmin(Scl)
     R2, xc = circhyp(xi[:, tri[ind, :]], n)
-    # Notice!! ind_min may have a problen as an index
+    # Notice!! ind_min may have a problem as an index
     x = np.copy(xi[:, ind_min])
     xml, yml = Constant_K_Search(x, inter_par, xc, R2, K)
     if yml < ym:
@@ -376,53 +410,13 @@ def Constant_K_Search(x0, inter_par, xc, R2, K, lb=[], ub=[]):
 
 # value of constant K search
 def Contious_search_cost(x, inter_par, xc, R2, K):
-    # if num_arg == 1: return M
-    # if num_arg == 2: return DM
     x = x.reshape(-1, 1)
-    M = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
+    M = interpolate_val(x, inter_par) - K * (R2**2 - np.linalg.norm(x - xc) ** 2)
     DM = interpolate_grad(x, inter_par) + 2 * K * (x - xc)
     return M, DM.T
 
 
 #################################### Adaptive K method ####################################
-def search_cost_AdaptiveK(x, inter_par, xc, R2, y0):
-    x = x.reshape(-1, 1)
-    p = interpolate_val(x, inter_par)
-    e = (R2 - np.linalg.norm(x - xc) ** 2)
-    # search function value
-    M = -e * 1.0 / (p - y0)
-    # M = (p-y0)/e
-    if p < y0:
-        # M=float("inf")
-        M = -M * np.inf
-
-    # gradient of search
-    gp = interpolate_grad(x, inter_par)
-    ge = -2 * (x - xc)
-    DM = -ge / (p - y0) + e * gp / (p - y0) ** 2.0
-    # DM =  (e * gp )/ (e)**2.0 - ge*(p - y0)/e**2
-    if p < y0:
-        DM = gp * 0
-
-    return M, DM.T
-
-def Adoptive_K_Search_new(x0, inter_par, xc, R2, y0, lb=[], ub=[]):
-    # Find the minimizer of the search fucntion in a simplex
-    n = x0.shape[0]
-    costfun = lambda x: search_cost_AdaptiveK(x, inter_par, xc, R2, y0)[0]
-    costjac = lambda x: search_cost_AdaptiveK(x, inter_par, xc, R2, y0)[1]
-    # opt = {'disp': False, 'maxiter': 15}
-    opt = {'disp': False}
-    # TODO: boundas 0 to 1 all dimetnsions.. fix with lb and ub
-    bnds = tuple([(0, 1) for i in range(int(n))])
-    # res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
-    res = optimize.minimize(costfun, x0, jac=costjac, method='SLSQP', bounds=bnds, options=opt)
-
-    x = res.x
-    y = res.fun
-    return x, y
-
-
 def tringulation_search_bound(inter_par, xi, y0, ind_min):
     inf = 1e+20
     n = xi.shape[0]
@@ -457,7 +451,7 @@ def tringulation_search_bound(inter_par, xi, y0, ind_min):
         if R2 < inf:
             # initialze with body center of each simplex
             x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
-            Sc[ii] = (interpolate_val(x, inter_par) - y0) / (R2 - np.linalg.norm(x - xc) ** 2)
+            Sc[ii] = (interpolate_val(x, inter_par) - y0) / (R2**2 - np.linalg.norm(x - xc) ** 2)
             if np.sum(ind_min == tri[ii, :]):
                 Scl[ii] = np.copy(Sc[ii])
             else:
@@ -484,22 +478,68 @@ def tringulation_search_bound(inter_par, xi, y0, ind_min):
         ym = np.copy(yml)
 
     return xm, ym
+
+
+def Adoptive_K_Search(x0, inter_par, xc, R2, y0, lb=[], ub=[]):
+    # Find the minimizer of the search fucntion in a simplex
+    n = x0.shape[0]
+    costfun = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0)[0]
+    costjac = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0)[1]
+    opt = {'disp': False}
+    bnds = tuple([(0, 1) for i in range(int(n))])
+    # res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
+    res = optimize.minimize(costfun, x0, jac=costjac, method='SLSQP', bounds=bnds, options=opt)
+    x = res.x
+    y = res.fun
+    return x, y
+
+
+def AdaptiveK_search_cost(x, inter_par, xc, R2, y0):
+    x = x.reshape(-1, 1)
+    p = interpolate_val(x, inter_par)
+    e = R2**2 - np.linalg.norm(x - xc) ** 2
+    # search function value
+    M = -e * 1.0 / (p - y0)
+    # M = (p-y0)/e
+
+    # gradient of search
+    gp = interpolate_grad(x, inter_par)
+    ge = -2 * (x - xc)
+    DM = -ge / (p - y0) + e * gp / (p - y0) ** 2.0
+    # DM =  (e * gp )/ (e)**2.0 - ge*(p - y0)/e**2
+    if p < y0:
+        M = -M * np.inf
+        DM = gp * 0
+
+    return M, DM.T
+
+
 ############################### Cartesian Lattice functions ######################
-def add_sup(xE, xU):
+def add_sup(xE, xU, ind_min):
     '''
     To avoid duplicate values in support points for Delaunay Triangulation.
     :param xE: Evaluated points.
     :param xU: Support points.
-    return: Combination of xE and xU
+    :param ind_min: The minimum point's index in xE.
+    return: Combination of xE and xU, and the unique elements without changing orders.
     '''
-    xs = xE
-    for i in range(xU.shape[1]):
-        for j in range(xE.shape[1]):
-            if xU[:, i].all() == xE[:, j].all():
-                continue
-            if j == xE.shape[1] - 1:
-                xs = np.hstack(( xs, xU[:, i].reshape(-1, 1) ))
-    return xs
+    xmin = xE[:, ind_min]
+    xs = np.hstack((xE, xU))
+    n = xs.shape[1]
+    # Construct the concatenate of xE and xU and return the array that every column is unique
+    x_uni = xs[:, 0].reshape(-1, 1)
+    for i in range(1, n):
+        for j in range(x_uni.shape[1]):
+            if ( xs[:, i] == x_uni[:, j] ).all():
+                break
+            if j == x_uni.shape[1] - 1:
+                x_uni = np.hstack(( x_uni, xs[:, i].reshape(-1, 1) ))
+    # Find the minimum point's index: ind_min
+    for i in range(x_uni.shape[1]):
+        if (x_uni[:, i] == xmin).all():
+            ind_min_new = i
+            break
+    return x_uni, ind_min_new
 
 
 def ismember(A, B):
@@ -533,7 +573,9 @@ def points_neighbers_find(x, xE, xU, Bin, Ain):
         if b[i][0] < 1e-3:
             active_cons1.append(i + 1)
     active_cons1 = np.array(active_cons1)
-
+    # Explain the following two criterias:
+    # The first means that x is an interior point.
+    # The second means that x and x1 have exactly the same constraints.
     if len(active_cons) == 0 or min(ismember(active_cons, active_cons1)) == 1:
         newadd = 1
         success = 1
@@ -634,7 +676,7 @@ def plot_alpha_dogs(xE, xU, yE, SigmaT, xc_min, yc, yd, funr, num_iter, K, L, Nm
             xd = xE[:, np.argmin(sd)]
             plt.annotate('Supplemental Sampling', xy=(xd[0], np.min(sd)), xytext=(np.abs(xd[0]-0.5), np.min(sd)-1),
                          arrowprops=dict(facecolor='black', shrink=0.05))
-    ##### Plot the information about algorithm's iteration  #####
+    ##### Plot the information about parameters of each iteration  #####
     plt.annotate('#Iterations = ' + str(int(num_iter)), xy=(0, 3.5), fontsize=8)
     plt.annotate('Mesh size = ' + str(int(Nm)), xy=(0.35, 3.5), fontsize=8, color='b')
     plt.annotate('K = ' + str(int(K)), xy=(0.35, 3), fontsize=8, color='b')
@@ -644,13 +686,62 @@ def plot_alpha_dogs(xE, xU, yE, SigmaT, xc_min, yc, yd, funr, num_iter, K, L, Nm
     plt.grid()
     ##### Check if the folder 'plot' exists or not  #####
     current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    plot_folder = current_path + "/plot"
+    plot_folder = current_path + "/plot/cd_movie"
     if not os.path.exists(plot_folder):
-        os.makedirs(plot_folder)    
+        os.makedirs(plot_folder)  
     # Save fig
-    plt.savefig('plot/cd_movie' + str(num_iter) +'.png', format='png', dpi=1000)    
+    plt.savefig('plot/cd_movie/cd_movie' + str(num_iter) +'.png', format='png', dpi=1000)    
     return 
+
+
+def plot_delta_dogs_2DimRed(xE, yE, fun_arg, p_iter, r_ind, num_ini, Nm):
+    # Plot the truth function
+    p = len(r_ind)
+    plt.figure()
+    x = y = np.linspace(-0.05, 1.05, 500)
+    X, Y = np.meshgrid(x, y)
+    if fun_arg == 2:
+        Z = (-np.multiply(X, np.sin(np.sqrt(abs(500*X)))) - np.multiply(Y, np.sin(np.sqrt(abs(500*Y)))))/2
+    elif fun_arg == 5:
+        Z = -np.multiply(X/2, np.sin(np.sqrt(abs(500*X)))) + 10 * (Y - 0.92) ** 2
+    plt.contourf(X, Y, Z, cmap='gray')
+    plt.colorbar()
+    # Plot the 3 initial points.
+    plt.scatter(xE[0, :num_ini], xE[1, :num_ini], c='w', label='Initial points')
+    # Plot the rest point.
+    plt.scatter(xE[0, num_ini:], xE[1, num_ini:], c='b', label='Other points')
+    # Plot the random search point.
+    if len(p_iter) != 1:
+        if max(p_iter) == 1:
+            ind = len(p_iter) - int((np.log(Nm) - np.log(8))/np.log(2))
+        else:
+            ind = np.argmax(p_iter) - int((np.log(Nm) - np.log(8))/np.log(2))
+        plt.scatter(xE[0, num_ini:ind+num_ini], xE[1, num_ini:ind+num_ini], c='g', label='Random')
+    # Plot the latest point.
+    plt.scatter(xE[0, -1], xE[1, -1], c='r', label='Current Evaluate point')
+    # Plot the reduced regression model
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title(str(len(p_iter)) + "th iteration: Reduced Dim = " + str(p) + 'MeshSize = ' + str(Nm), y=1.05)
+    if sum(r_ind+1) == 1:
+        plt.plot(np.zeros(len(y)), y, c='r')
+    elif sum(r_ind+1) == 2:
+        plt.plot(x, np.zeros(len(x)), c='r')
+    plt.grid()
+    plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+               ncol=5, prop={'size': 6}, borderaxespad=0.)
+    ##### Check if the folder 'plot' exists or not  #####
+    if len(p_iter) == 1:
+        current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+        plot_folder = current_path + "/plot/DimRed"
+        if not os.path.exists(plot_folder):
+            os.makedirs(plot_folder)
+    # Save fig
+    plt.savefig('plot/DimRed/DR' + str(len(p_iter)) +'.png', format='png', dpi=1000)
+    return
 ############################################ Test Examples ############################################
+
+
 def read_str(S, judge):
     '''
     This function is designed for reading input from 'dat' file. 
@@ -862,6 +953,7 @@ def sensitivity_analysis(x, y, p):
         ssf[i] = np.sum(np.sum(sim_j, axis=1) * (np.array([ np.mean(y[sim_j[i]]) for i in range(sim_j.shape[0]) ]) - np.mean(y))**2)
     ssf /= np.sum((y-np.mean(y))**2)
     index = ssf.argsort()[-p:][::-1]
+    index = np.sort(index)
     return index
 #########################  Check for the time of generating files ##########################################
 
