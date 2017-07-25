@@ -16,7 +16,7 @@ def Initialize_IC():
     # if not os.path.exists(apts):
     #     os.makedirs(apts)
     
-    n = 1  # Dimension of data
+    n = 2  # Dimension of data
     K = 3  # Tuning parameter for continuous search function
     Nm = 8  # Initial mesh grid size
     L = 1  # Tuning parameter for discrete search function
@@ -37,7 +37,8 @@ def Initialize_IC():
 
     elif n == 2:
         xE = np.array([[0.5, 0.75, 0.5], [0.5, 0.5, 0.75]])
-
+        bnd2 = np.array([30, 30])
+        bnd1 = np.array([24, 24])
     elif n == 3:
         xE = np.array([[0.5, 0.5, 0.5, 0.75], [0.5, 0.5, 0.75, 0.5], [0.5, 0.75, 0.5, 0.5]])
         bnd2 = np.array([30, 30, 30])

@@ -1010,6 +1010,9 @@ def solver_lorenz():  # flag = 1 : new point
 
     if flag != 2:
         if flag == 1:  # flag = 1: new point
+            print("------------------")
+            print(xm)
+            print("------------------")
             T = T_lorenz
             J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, y0, time_method)
         elif flag == 0:  # flag = 0: existing point
