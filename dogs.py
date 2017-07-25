@@ -301,18 +301,17 @@ def inter_cost(x,inter_par):
     
     
 def inter_min(x, inter_par, lb=[], ub=[]):
-    # %find the minimizer of the interpolating function starting with x
+    # Find the minimizer of the interpolating function starting with x
     rho = 0.9  # backtracking parameter
     n = x.shape[0]
 
-    #     start the search method
+    # Start the search method
     x0 = np.zeros((n, 1))
 
-    #         optimizaiton for finding hte right direction
+    # Optimizaiton for finding hte right direction
     objfun = lambda x: inter_cost(x, inter_par)[0]
     grad_objfun = lambda x: inter_cost(x, inter_par)[1]
     opt = {'disp': False}
-    # TODO: boundas 0 to 1 all dimetnsions.. fix with lb and ub
     bnds = tuple([(0, 1) for i in range(int(n))])
     res = optimize.minimize(objfun, x0, jac=grad_objfun, method='TNC', bounds=bnds, options=opt)
     x = res.x
@@ -465,14 +464,14 @@ def tringulation_search_bound(inter_par, xi, y0, ind_min):
     ind = np.argmin(Sc)
     R2, xc = circhyp(xi[:, tri[ind, :]], n)
     x = np.dot(xi[:, tri[ind, :]], np.ones([n + 1, 1]) / (n + 1))
-    xm, ym = Adoptive_K_Search_new(x, inter_par, xc, R2, y0)
+    xm, ym = Adoptive_K_Search(x, inter_par, xc, R2, y0)
     # Local one
     sc_min = np.min(Scl)
     ind = np.argmin(Scl)
     R2, xc = circhyp(xi[:, tri[ind, :]], n)
     # Notice!! ind_min may have a problen as an index
     x = np.copy(xi[:, ind_min])
-    xml, yml = Adoptive_K_Search_new(x, inter_par, xc, R2, y0)
+    xml, yml = Adoptive_K_Search(x, inter_par, xc, R2, y0)
     if yml < 2 * ym:
         xm = np.copy(xml)
         ym = np.copy(yml)
@@ -694,7 +693,7 @@ def plot_alpha_dogs(xE, xU, yE, SigmaT, xc_min, yc, yd, funr, num_iter, K, L, Nm
     return 
 
 
-def plot_delta_dogs_2DimRed(xE, yE, fun_arg, p_iter, r_ind, num_ini, Nm):
+def plot_delta_dogs_2DimRed(xE, yE, alg, sc, fun_arg, p_iter, r_ind, num_ini, Nm, Nm_p1):
     # Plot the truth function
     p = len(r_ind)
     plt.figure()
@@ -706,27 +705,31 @@ def plot_delta_dogs_2DimRed(xE, yE, fun_arg, p_iter, r_ind, num_ini, Nm):
         Z = -np.multiply(X/2, np.sin(np.sqrt(abs(500*X)))) + 10 * (Y - 0.92) ** 2
     plt.contourf(X, Y, Z, cmap='gray')
     plt.colorbar()
-    # Plot the 3 initial points.
+    # Plot the initial points.
     plt.scatter(xE[0, :num_ini], xE[1, :num_ini], c='w', label='Initial points')
     # Plot the rest point.
     plt.scatter(xE[0, num_ini:], xE[1, num_ini:], c='b', label='Other points')
     # Plot the random search point.
-    if len(p_iter) != 1:
-        if max(p_iter) == 1:
-            ind = len(p_iter) - int((np.log(Nm) - np.log(8))/np.log(2))
-        else:
-            ind = np.argmax(p_iter) - int((np.log(Nm) - np.log(8))/np.log(2))
-        plt.scatter(xE[0, num_ini:ind+num_ini], xE[1, num_ini:ind+num_ini], c='g', label='Random')
+    if alg == "DR":
+        plt.title(r"$\Delta$-DOGS: " + sc + 'K = 5, ' + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
+        if sum(r_ind+1) == 1:
+            plt.plot(np.zeros(len(y)), y, c='r')
+        elif sum(r_ind+1) == 2:
+            plt.plot(x, np.zeros(len(x)), c='r')
+        if len(p_iter) != 1:
+            if max(p_iter) == 1:
+                ind = len(p_iter) - Nm_p1
+            else:
+                ind = np.argmax(p_iter) - Nm_p1
+            plt.scatter(xE[0, num_ini:ind+num_ini], xE[1, num_ini:ind+num_ini], c='g', label='1DRandom')
+    else:
+        plt.title(r"$\Delta$-DOGS " + sc + ', K = 5, ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
     # Plot the latest point.
     plt.scatter(xE[0, -1], xE[1, -1], c='r', label='Current Evaluate point')
     # Plot the reduced regression model
     plt.xlabel('X')
     plt.ylabel('Y')
-    plt.title(str(len(p_iter)) + "th iteration: Reduced Dim = " + str(p) + 'MeshSize = ' + str(Nm), y=1.05)
-    if sum(r_ind+1) == 1:
-        plt.plot(np.zeros(len(y)), y, c='r')
-    elif sum(r_ind+1) == 2:
-        plt.plot(x, np.zeros(len(x)), c='r')
+
     plt.grid()
     plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
                ncol=5, prop={'size': 6}, borderaxespad=0.)
@@ -1148,7 +1151,7 @@ def DOGS_standalone_IC():
             xU = scipy.delete(xU, ind, 1)  # delete the minimum element in xU, which is going to be incorporated in xE
         else:
             while 1:
-                xs = add_sup(xE, xU)
+                xs, ind_min = add_sup(xE, xU, ind_min)
                 xc, yc = tringulation_search_bound_constantK(inter_par, xs, K * K0, ind_min)
                 yc = yc[0, 0]
                 if interpolate_val(xc, inter_par) < min(yp):
