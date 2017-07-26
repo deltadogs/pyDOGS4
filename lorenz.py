@@ -97,17 +97,12 @@ def lorenz_lost2(xi, T, h, y0=0,  method=1, ind_exist=-1):
     s0 = np.array([[10]])
     r0 = np.array([[28]])
     b0 = np.array([[2.667]])
-    xiT = xi.reshape(-1, 1)
-    n = xiT.shape[0]
-    x0 = np.copy(xi)
+    x0 = xi.reshape(-1, 1)
+    n = x0.shape[0]
     if n == 1:
         x = np.vstack((s0, x0, b0))
         # x = x.reshape(-1, 1)
     elif n == 2:
-        print('-----***************------')
-        print(x0.shape)
-        print(s0.shape)
-        x0 = x0.reshape(-1, 1)
         x = np.vstack((s0, x0))
         # x = x.reshape(-1, 1)
     else:
@@ -166,11 +161,9 @@ def lorenz_lost2(xi, T, h, y0=0,  method=1, ind_exist=-1):
         J = np.abs(np.mean(zs)-y0)[0]
         return J, zs, ys, xs
     elif n == 2:
-        J = np.abs(np.mean(zs) - y0)[0]
-        # J = (np.sum(( (np.mean(zs)-y0[0])**2, (np.std(zs)-y0[1])**2 ))) / len(y0)
+        J = (np.sum(( (np.mean(zs)-y0[0])**2, (np.std(zs)-y0[1])**2 ))) / len(y0)
         return J, zs, ys, xs
     else:
-        J = np.abs(np.mean(zs) - y0)[0]
-        # J = (np.sum(((np.mean(zs) - y0[0]) ** 2, (np.std(zs) - y0[1]) ** 2))) / len(y0)
+        J = (np.sum(((np.mean(zs) - y0[0]) ** 2, (np.std(zs) - y0[1]) ** 2))) / len(y0)
         return J, zs, ys, xs
 
