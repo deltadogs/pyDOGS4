@@ -9,9 +9,17 @@ SigmaT = np.array([])
 T = np.array([])
 
 # Read from surr_J_new.
-zs = np.loadtxt("allpoints/surr_J_new.dat")
+var = io.loadmat("data/params.mat")
+A = var['A']
+theta = var['theta']
+fname = "data/dragdata0"+str(1)+".dat"
+zs = np.loadtxt(fname)
 
-xx = uq.data_moving_average(zs, 40).values
+
+
+trans_samples = int(np.ceil(len(zs)*0.005))
+print(trans_samples)
+xx = uq.data_moving_average(zs, trans_samples).values
 ind = tr.transient_removal(xx)
 sig = np.sqrt(uq.stationary_statistical_learning_reduced(xx[ind:], 18)[0])
 t = len(zs)  # not needed for Alpha-DOGS
@@ -29,3 +37,4 @@ print("The second time running the iteration")
 print(' len of yE = ', len(yE))
 # print('iter k = ', k)
 print('function evaluation at this iteration: ', J)
+print(' time averaging error at this iteration: ', sig)
