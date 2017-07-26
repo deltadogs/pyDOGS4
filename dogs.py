@@ -693,7 +693,25 @@ def plot_alpha_dogs(xE, xU, yE, SigmaT, xc_min, yc, yd, funr, num_iter, K, L, Nm
     return 
 
 
-def plot_delta_dogs_2DimRed(xE, yE, alg, sc, fun_arg, p_iter, r_ind, num_ini, Nm, Nm_p1):
+def plot_delta_dogs(xE, yE, alg, sc, Kini, fun_arg, p_iter, r_ind, num_ini, Nm, Nm_p1):
+    '''
+    This function is set for plotting Delta-DOGS algorithm or Delta-DOGS with DR on toy problem, e.g. Schwefel function or Schwefel + Quadratic.
+    Also this function can plot continuous search function for cosntantK and Adaptive K. Parameters containing:
+    continuous search function, discrete search function, regression function, truth function and function evaluation.
+    
+    :param xE: Evaluated points.
+    :param yE: Function evaluation of xE.
+    :param alg: The algorithm that we are using: 'DR' represents Dimension Reduction, 'Ddogs' represents regular Delta-DOGS.
+    :param sc: Type of continuous search function, can be 'ConstantK' or 'AdaptiveK'.
+    :param Kini: The initial tuning parameter for ConstantK.
+    :param fun_arg: Type of truth function.
+    :param p_iter: Set for DimRec to represent which points is for 1D random search.
+    :param r_ind: Represents which coordination is reduced.
+    :param num_ini: Represents the number of initial evaluated points.
+    :param Nm: Current mesh size.
+    :param Nm_p1: Represents the number of mesh refinement at 1D reduced model.
+    :return: Plot for each iteration of Delta-DOGS algorithm, save the fig at 'plot/DimRec' folder.
+    '''
     # Plot the truth function
     p = len(r_ind)
     plt.figure()
@@ -711,7 +729,11 @@ def plot_delta_dogs_2DimRed(xE, yE, alg, sc, fun_arg, p_iter, r_ind, num_ini, Nm
     plt.scatter(xE[0, num_ini:], xE[1, num_ini:], c='b', label='Other points')
     # Plot the random search point.
     if alg == "DR":
-        plt.title(r"$\Delta$-DOGS: " + sc + 'K = 5, ' + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
+        if sc == "ConstantK":
+            plt.title(r"$\Delta$-DOGS: " + sc + ': K = ' + str(Kini) + ' ' + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
+        elif sc == "AdaptiveK":
+            plt.title(r"$\Delta$-DOGS: " + sc + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
+        # Represents which coordinaion is performing random search
         if sum(r_ind+1) == 1:
             plt.plot(np.zeros(len(y)), y, c='r')
         elif sum(r_ind+1) == 2:
@@ -723,7 +745,11 @@ def plot_delta_dogs_2DimRed(xE, yE, alg, sc, fun_arg, p_iter, r_ind, num_ini, Nm
                 ind = np.argmax(p_iter) - Nm_p1
             plt.scatter(xE[0, num_ini:ind+num_ini], xE[1, num_ini:ind+num_ini], c='g', label='1DRandom')
     else:
-        plt.title(r"$\Delta$-DOGS " + sc + ', K = 5, ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
+        if sc == "ConstantK":
+            plt.title(r"$\Delta$-DOGS " + sc + ': K = ' + str(Kini) + ' ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
+        elif sc == "AdaptiveK":
+            plt.title(r"$\Delta$-DOGS: " + sc + ' ' + str(len(p_iter)) + "th Iteration: " + ', MeshSize = ' + str(Nm), y=1.05)
+
     # Plot the latest point.
     plt.scatter(xE[0, -1], xE[1, -1], c='r', label='Current Evaluate point')
     # Plot the reduced regression model
@@ -994,9 +1020,12 @@ def solver_lorenz():  # flag = 1 : new point
     n = var_opt['n'][0, 0]
     T_lorenz = 5
     h = 0.005
-
-    y0 = np.array([23.5712])
-
+    if n == 1:
+        y0 = np.array([23.5712])
+    elif n == 2:
+        y0 = np.array([23.5712, 23.5712])
+    elif n == 3:
+        y0 = np.array([23.5712, 23.5712, 23.5712])
     time_method = 1
     DT = 10
 
@@ -1010,9 +1039,6 @@ def solver_lorenz():  # flag = 1 : new point
 
     if flag != 2:
         if flag == 1:  # flag = 1: new point
-            print("------------------")
-            print(xm)
-            print("------------------")
             T = T_lorenz
             J, zs, ys, xs = lorenz.lorenz_lost2(xm, T, h, y0, time_method)
         elif flag == 0:  # flag = 0: existing point
