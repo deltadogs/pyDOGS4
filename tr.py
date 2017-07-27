@@ -59,11 +59,12 @@ def transient_drag(x,Safety=13):
             else:
                 if index0!=0:
                     INDEX = IND + index
-                    
+                    return INDEX, xc
                 else:
                     index = 100;
                     IND = IND + index
                     INDEX = np.copy(IND)
+                    return INDEX, xc
 # x = readInputFile(data1FilePath)
 
 
