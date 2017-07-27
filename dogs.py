@@ -326,11 +326,11 @@ def inter_min(x, inter_par, lb=[], ub=[]):   # TODO fixed for now, quite differe
     n = x.shape[0]
     x0 = np.zeros((n, 1))
     x = x.reshape(-1, 1)
-    objfun3 = lambda x: interpolate_val(x, inter_par)
-    grad_objfun3 = lambda x: interpolate_grad(x, inter_par)
+    objfun = lambda x: interpolate_val(x, inter_par)
+    grad_objfun = lambda x: interpolate_grad(x, inter_par)
     opt = {'disp': False}
     bnds = tuple([(0, 1) for i in range(int(n))])
-    res = optimize.minimize(objfun3, x0, jac=grad_objfun3, method='TNC', bounds=bnds, options=opt)
+    res = optimize.minimize(objfun, x0, jac=grad_objfun, method='TNC', bounds=bnds, options=opt)
     x = res.x
     y = res.fun
     return x, y
@@ -371,7 +371,7 @@ def tringulation_search_bound_constantK(inter_par, xi, K, ind_min):
         R2, xc = circhyp(xi[:, tri[ii, :]], n)
         # x is the center of the current simplex
         x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
-        Sc[ii] = interpolate_val(x, inter_par) - K * (R2**2 - np.linalg.norm(x - xc) ** 2)
+        Sc[ii] = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
         if np.sum(ind_min == tri[ii, :]):
             Scl[ii] = np.copy(Sc[ii])
         else:
@@ -410,13 +410,13 @@ def Constant_K_Search(x0, inter_par, xc, R2, K, lb=[], ub=[]):
 # value of constant K search
 def Contious_search_cost(x, inter_par, xc, R2, K):
     x = x.reshape(-1, 1)
-    M = interpolate_val(x, inter_par) - K * (R2**2 - np.linalg.norm(x - xc) ** 2)
+    M = interpolate_val(x, inter_par) - K * (R2 - np.linalg.norm(x - xc) ** 2)
     DM = interpolate_grad(x, inter_par) + 2 * K * (x - xc)
     return M, DM.T
 
 
 #################################### Adaptive K method ####################################
-def tringulation_search_bound(inter_par, xi, y0, ind_min):
+def tringulation_search_bound(inter_par, xi, y0, K0, ind_min):
     inf = 1e+20
     n = xi.shape[0]
     xm, ym = inter_min(xi[:, ind_min], inter_par)
@@ -450,7 +450,7 @@ def tringulation_search_bound(inter_par, xi, y0, ind_min):
         if R2 < inf:
             # initialze with body center of each simplex
             x = np.dot(xi[:, tri[ii, :]], np.ones([n + 1, 1]) / (n + 1))
-            Sc[ii] = (interpolate_val(x, inter_par) - y0) / (R2**2 - np.linalg.norm(x - xc) ** 2)
+            Sc[ii] = (interpolate_val(x, inter_par) - y0) / (R2 - np.linalg.norm(x - xc) ** 2)
             if np.sum(ind_min == tri[ii, :]):
                 Scl[ii] = np.copy(Sc[ii])
             else:
@@ -460,56 +460,52 @@ def tringulation_search_bound(inter_par, xi, y0, ind_min):
             Sc[ii] = inf
 
     # Global one
-    sc_min = np.min(Sc)
     ind = np.argmin(Sc)
     R2, xc = circhyp(xi[:, tri[ind, :]], n)
     x = np.dot(xi[:, tri[ind, :]], np.ones([n + 1, 1]) / (n + 1))
-    xm, ym = Adoptive_K_Search(x, inter_par, xc, R2, y0)
+    xm, ym = Adoptive_K_Search(x, inter_par, xc, R2, y0, K0)
     # Local one
-    sc_min = np.min(Scl)
     ind = np.argmin(Scl)
     R2, xc = circhyp(xi[:, tri[ind, :]], n)
     # Notice!! ind_min may have a problen as an index
     x = np.copy(xi[:, ind_min])
-    xml, yml = Adoptive_K_Search(x, inter_par, xc, R2, y0)
+    xml, yml = Adoptive_K_Search(x, inter_par, xc, R2, y0, K0)
     if yml < 2 * ym:
         xm = np.copy(xml)
         ym = np.copy(yml)
-
     return xm, ym
 
 
-def Adoptive_K_Search(x0, inter_par, xc, R2, y0, lb=[], ub=[]):
+def Adoptive_K_Search(x0, inter_par, xc, R2, y0, K0, lb=[], ub=[]):
     # Find the minimizer of the search fucntion in a simplex
     n = x0.shape[0]
-    costfun = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0)[0]
-    costjac = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0)[1]
+    costfun = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0, K0)[0]
+    costjac = lambda x: AdaptiveK_search_cost(x, inter_par, xc, R2, y0, K0)[1]
     opt = {'disp': False}
     bnds = tuple([(0, 1) for i in range(int(n))])
     # res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
-    res = optimize.minimize(costfun, x0, jac=costjac, method='SLSQP', bounds=bnds, options=opt)
+    res = optimize.minimize(costfun, x0, jac=costjac, method='TNC', bounds=bnds, options=opt)
     x = res.x
     y = res.fun
     return x, y
 
 
-def AdaptiveK_search_cost(x, inter_par, xc, R2, y0):
+def AdaptiveK_search_cost(x, inter_par, xc, R2, y0, K0):
     x = x.reshape(-1, 1)
     p = interpolate_val(x, inter_par)
-    e = R2**2 - np.linalg.norm(x - xc) ** 2
-    # search function value
-    M = -e * 1.0 / (p - y0)
-    # M = (p-y0)/e
+    e = R2 - np.linalg.norm(x - xc) ** 2
+    # Search function value
+    M = - e * K0 / (p - y0)
+#    M = (p - y0) / e
 
-    # gradient of search
+    # Gradient of search
     gp = interpolate_grad(x, inter_par)
-    ge = -2 * (x - xc)
-    DM = -ge / (p - y0) + e * gp / (p - y0) ** 2.0
-    # DM =  (e * gp )/ (e)**2.0 - ge*(p - y0)/e**2
-    if p < y0:
-        M = -M * np.inf
-        DM = gp * 0
-
+    ge = - 2 * np.linalg.norm(x - xc)
+    DM = - ge * K0 / (p - y0) + K0 * e * gp / (p - y0) ** 2
+#    DM = gp / e - ge * (p - y0) / e ** 2
+#    if p < y0:
+#        M = -M * np.inf
+#        DM = gp * 0
     return M, DM.T
 
 
@@ -732,7 +728,7 @@ def plot_delta_dogs(xE, yE, alg, sc, Kini, fun_arg, p_iter, r_ind, num_ini, Nm, 
         if sc == "ConstantK":
             plt.title(r"$\Delta$-DOGS: " + sc + ': K = ' + str(Kini) + ' ' + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
         elif sc == "AdaptiveK":
-            plt.title(r"$\Delta$-DOGS: " + sc + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
+            plt.title(r"$\Delta$-DOGS: " + sc + ' ' + str(len(p_iter)) + "th Iteration: RD = " + str(p) + ', MS = ' + str(Nm), y=1.05)
         # Represents which coordinaion is performing random search
         if sum(r_ind+1) == 1:
             plt.plot(np.zeros(len(y)), y, c='r')
@@ -746,9 +742,9 @@ def plot_delta_dogs(xE, yE, alg, sc, Kini, fun_arg, p_iter, r_ind, num_ini, Nm, 
             plt.scatter(xE[0, num_ini:ind+num_ini], xE[1, num_ini:ind+num_ini], c='g', label='1DRandom')
     else:
         if sc == "ConstantK":
-            plt.title(r"$\Delta$-DOGS " + sc + ': K = ' + str(Kini) + ' ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
+            plt.title(r"$\Delta$-DOGS(Z) " + sc + ': K = ' + str(Kini) + ' ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
         elif sc == "AdaptiveK":
-            plt.title(r"$\Delta$-DOGS: " + sc + ' ' + str(len(p_iter)) + "th Iteration: " + ', MeshSize = ' + str(Nm), y=1.05)
+            plt.title(r"$\Delta$-DOGS(Z): " + sc + ' ' + str(len(p_iter)) + "th Iteration: " + 'MeshSize = ' + str(Nm), y=1.05)
 
     # Plot the latest point.
     plt.scatter(xE[0, -1], xE[1, -1], c='r', label='Current Evaluate point')
