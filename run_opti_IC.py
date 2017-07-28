@@ -6,16 +6,16 @@ from pathlib import Path
 import shutil
 import tr
 
+
 ##########  Initialize function ##########
 
 def Initialize_IC():
-    
     # The following lines are for generate the directory:
     # current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     # apts = current_path + "/allpoints"
     # if not os.path.exists(apts):
     #     os.makedirs(apts)
-    
+
     n = 2  # Dimension of data
     K = 3  # Tuning parameter for continuous search function
     Nm = 8  # Initial mesh grid size
@@ -37,22 +37,27 @@ def Initialize_IC():
 
     elif n == 2:
         xE = np.array([[0.5, 0.75, 0.5], [0.5, 0.5, 0.75]])
-        bnd2 = np.array([30, 30])
-        bnd1 = np.array([24, 24])
+        # new formulations
+        bnd2 = np.array([0.05, 0.05]) #upper bounds
+        bnd1 = np.array([-0.05, -0.05]) #lower bounds
     elif n == 3:
         xE = np.array([[0.5, 0.5, 0.5, 0.75], [0.5, 0.5, 0.75, 0.5], [0.5, 0.75, 0.5, 0.5]])
         bnd2 = np.array([30, 30, 30])
         bnd1 = np.array([24, 24, 24])
-    
-    xU = dogs.bounds(np.zeros([n, 1]), np.ones([n, 1]), n)
 
-    xE = dogs.physical_bounds(xE, bnd1, bnd2)
+    # statring with vertices of domain...
+    # xE = dogs.bounds(np.zeros([n, 1]), np.ones([n, 1]), n)
+    # xE = dogs.physical_bounds(xE, bnd1, bnd2)
+    xU = dogs.bounds(np.zeros([n, 1]), np.ones([n, 1]), n)
     xU = dogs.physical_bounds(xU, bnd1, bnd2)
-    
+    # xU = xU[:,0]-0.00001
+    # xE = xE[:, 0] - 0.00001
+    # xU = np.array([])
+
     k = 0  # times of iteration, start with 0
-    iter_max = 50  # maximum iteration steps
+    iter_max = 500  # maximum iteration steps
     idx = 0
-    
+
     var_opt = {}
     var_opt['n'] = n
     var_opt['K'] = K
@@ -70,12 +75,12 @@ def Initialize_IC():
     var_opt['iter_max'] = iter_max
     # var_opt['fe_times'] = fe_times
     io.savemat("allpoints/pre_opt_IC", var_opt)
-    
+
     return
 
 
 def DOGS_standlone():
-    print('==================================================')
+    # print('==================================================')
 
     current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 
@@ -90,6 +95,19 @@ def DOGS_standlone():
     # Check whether or not it is the first iteraiton, if the optimizaton information file pre_opt_IC doesn't exist, then
     # generate that file:
     if not pre_opt_path.is_file():
+        current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+        # generate the directory
+        apts = current_path + "/allpoints"
+        if not os.path.exists(apts):
+            os.makedirs(apts)
+        # create the stop file
+        stp = current_path + "allpoints/stop.dat"
+        stp_path = Path(stp)
+        if not stp_path.is_file():
+            stop = 0
+            fout = open("allpoints/stop.dat", 'w')
+            fout.write(str(stop) + "\n")
+            fout.close()
         Initialize_IC()
 
     var_opt = io.loadmat("allpoints/pre_opt_IC")
@@ -165,8 +183,13 @@ def DOGS_standlone():
         n = var_opt['n'][0, 0]
 
         if len(yE) < n + 1:
-            # Generate the point that we want to evaluate.
+            # if len(yE) < 2*n : #starting with vertices #remove
+            # Generate the point that we want to evaluate
+            bnd2 = var_opt['ub'][0]
+            bnd1 = var_opt['lb'][0]
             xcurr = np.copy(xE[:, len(yE)])
+            xcurr = dogs.physical_bounds(xcurr.reshape(-1, 1), bnd1, bnd2)
+            xcurr = xcurr.T[0]
             fout = open("allpoints/pts_to_eval.dat", 'w')
             keywords = ['Awin', 'lambdain', 'fanglein']
             fout.write(str('flagin') + '=' + str(int(flag)) + "\n")
@@ -224,7 +247,6 @@ def run_opti():
         fout.close()
 
     while stop == 0:
-
         # DOGS_standalone() will first generate the initial points, then run alpha-DOGS algorithm.
         DOGS_standlone()
 
@@ -234,13 +256,18 @@ def run_opti():
 
         # Read stop file
         stop = int(np.loadtxt("allpoints/stop.dat"))
-        print('stop = ', stop)
+        # print('stop = ', stop)
     return
+
+
 ################################################################################################################
-run_opti()
+# run_opti()
 DOGS_standlone()
 
 # Delete the directory of allpoints
+'''
 current_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 shutil.rmtree(current_path + "/allpoints")
+
+'''
 
